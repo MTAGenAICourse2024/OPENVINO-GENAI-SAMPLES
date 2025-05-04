@@ -45,7 +45,7 @@ Samples for image and audio analysis
 7. View the AI's response and check your history of previous analyses
 ## Screenshot
 
-![Screenshot of the Camera Capture Image Analysis application showing the sidebar with model settings, camera input, and text analysis results](./images/camera_to_text.png)
+
 
 *The application interface displays camera input, model configuration options, and generated text analysis of captured images.*
 
@@ -97,6 +97,9 @@ Created by gilaka
 - Microsoft for the Phi-3.5 vision model
 - Streamlit for the web application framework
 
+## Screen Capture 
+Screenshot of the Camera Capture Image Analysis application showing the sidebar with model settings, camera input, and text analysis results
+![Image](https://github.com/user-attachments/assets/1d3dd78c-82e5-4442-8ee0-bd82f8e9ca35)
 
 ## Appendix 
 
