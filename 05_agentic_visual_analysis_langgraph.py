@@ -42,6 +42,7 @@ class AgentState(TypedDict):
     decision: Dict[str, Any]
     pipeline: Any
     error: str
+    retry_count: int  # 📚 NEW: Track retry attempts for quality validation
 
 class LangGraphVisionAgent:
     """LangGraph-powered autonomous vision agent"""
@@ -141,12 +142,54 @@ Focus only on observable facts. Format your response as a single clear statement
         return state
     
     def should_continue(self, state: AgentState) -> str:
-        """Conditional edge: Determine if we should continue or complete"""
+        """
+        📚 EDUCATIONAL: Conditional Edge with Quality Validation & Retry
+        
+        This is the KEY agentic pattern - the agent evaluates its own output
+        and decides whether to:
+        1. Continue to next step
+        2. Retry the current step (if quality is low)
+        3. Complete the workflow
+        
+        Retry logic prevents poor results from propagating through the pipeline.
+        """
         current_step = state.get("current_step", 0)
         workflow = state["workflow"]
+        results = state.get("results", [])
         
+        # Check if we have results to validate
+        if results:
+            last_result = results[-1]
+            
+            # Quality validation - check if last result needs retry
+            if self._is_low_quality_result(last_result.result):
+                retry_count = state.get("retry_count", 0)
+                max_retries = 2  # Maximum retry attempts per step
+                
+                if retry_count < max_retries:
+                    # Log the retry decision
+                    print(f"🔄 RETRY: Step {last_result.step_number} produced low-quality result. Attempt {retry_count + 1}/{max_retries}")
+                    
+                    # Decrement step to retry, increment retry counter
+                    state["current_step"] = current_step - 1
+                    state["retry_count"] = retry_count + 1
+                    
+                    # Remove the failed result
+                    if state["results"]:
+                        state["results"] = state["results"][:-1]
+                    
+                    return "continue"  # Retry the step
+                else:
+                    # Max retries reached, log warning and continue
+                    print(f"⚠️ WARNING: Step {last_result.step_number} failed after {max_retries} retries. Continuing...")
+                    state["retry_count"] = 0  # Reset for next step
+        
+        # Normal flow - check if workflow complete
         if current_step >= len(workflow):
             return "complete"
+        
+        # Reset retry count for new step
+        state["retry_count"] = 0
         return "continue"
     
     def make_decision_node(self, state: AgentState) -> AgentState:
@@ -181,6 +224,30 @@ Focus only on observable facts. Format your response as a single clear statement
         if "results" in state:
             self.analysis_history.extend(state["results"])
         return state
+    
+    def _is_low_quality_result(self, result: str) -> bool:
+        """
+        📚 EDUCATIONAL: Quality Validation for Agentic Retry Logic
+        
+        This method evaluates if a VLM result is low-quality and needs retry.
+        Low-quality indicators:
+        - Very short responses (< 10 chars)
+        - Error messages or "I cannot"/"I don't" phrases
+        - Empty or whitespace-only results
+        - Generic non-answers
+        """
+        if not result or len(result.strip()) < 10:
+            return True
+        
+        low_quality_phrases = [
+            "i cannot", "i can't", "i don't", "i am unable",
+            "sorry", "error", "unable to", "not able to",
+            "cannot determine", "unclear", "not visible",
+            "no image", "image not"
+        ]
+        
+        result_lower = result.lower()
+        return any(phrase in result_lower for phrase in low_quality_phrases)
     
     def _generate_summary(self, results: List[AnalysisStep]) -> str:
         """Generate a summary of all analysis steps"""
@@ -384,7 +451,7 @@ def main():
             
             if image_data:
                 image = Image.open(io.BytesIO(image_data.getvalue() if hasattr(image_data, 'getvalue') else image_data.read()))
-                st.image(image, caption="Input Image", use_column_width=True)
+                st.image(image, caption="Input Image", width="auto")
         
         with col2:
             st.subheader("🎯 Workflow Selection")
@@ -485,7 +552,7 @@ def main():
                     col_x, col_y = st.columns([1, 2])
                     
                     with col_x:
-                        st.image(result_data["image"], caption="Analyzed Image", use_column_width=True)
+                        st.image(result_data["image"], caption="Analyzed Image", width="auto")
                     
                     with col_y:
                         st.markdown("**LangGraph Workflow Results:**")

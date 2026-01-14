@@ -219,7 +219,7 @@ def main():
             
             if image_data:
                 image = Image.open(io.BytesIO(image_data.getvalue() if hasattr(image_data, 'getvalue') else image_data.read()))
-                st.image(image, caption="Input Image", use_column_width=True)
+                st.image(image, caption="Input Image", width="auto")
         
         with col2:
             st.subheader("🎯 Workflow Selection")
@@ -314,7 +314,7 @@ def main():
                     col_x, col_y = st.columns([1, 2])
                     
                     with col_x:
-                        st.image(result_data["image"], caption="Analyzed Image", use_column_width=True)
+                        st.image(result_data["image"], caption="Analyzed Image", width="auto")
                     
                     with col_y:
                         st.markdown("**Workflow Results:**")

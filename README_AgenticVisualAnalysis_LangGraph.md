@@ -1,4 +1,4 @@
-# 🤖 LangGraph Agentic Visual Analysis System
+ # 🤖 LangGraph Agentic Visual Analysis System
 
 An advanced autonomous AI agent powered by **LangGraph** and OpenVINO GenAI that performs sophisticated multi-step visual analysis using state-of-the-art graph-based workflow orchestration. This application demonstrates the power of LangGraph for building robust, scalable, and maintainable agentic AI systems.
 
@@ -102,6 +102,7 @@ class LangGraphVisionAgent:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    LangGraph Execution Flow                      │
+│                   (with Quality Validation)                      │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -111,33 +112,42 @@ class LangGraphVisionAgent:
                     └──────────────────┘
                               │
                               ▼
-                  ┌────────────────────────┐
-                  │ Execute Analysis Step  │◄──────┐
-                  │  (Vision Processing)   │       │
-                  └────────────────────────┘       │
-                              │                     │
-                              ▼                     │
-                    ┌──────────────────┐           │
-                    │ Conditional Edge │           │
-                    │ (Should Continue?)│          │
-                    └──────────────────┘           │
-                          │       │                 │
-                Complete  │       │  Continue       │
-                          │       └─────────────────┘
-                          ▼
-                 ┌──────────────────┐
-                 │  Make Decision   │
-                 │ (Aggregate & LLM)│
-                 └──────────────────┘
-                          │
-                          ▼
-                  ┌──────────────┐
-                  │   Finalize   │
-                  │   (Cleanup)  │
-                  └──────────────┘
-                          │
-                          ▼
-                        [END]
+         ┌───────────────────────────────────────┐
+         │                                       │
+         │  ┌────────────────────────┐           │
+  Retry  │  │ Execute Analysis Step  │◄──────┐   │
+  Loop   │  │  (Vision Processing)   │       │   │
+         │  └────────────────────────┘       │   │
+         │            │                       │   │
+         │            ▼                       │   │
+         │  ┌──────────────────┐             │   │
+         │  │ Quality Check    │             │   │
+         │  │ (Low Quality?)   │──── Yes ────┘   │
+         │  └──────────────────┘  (max 2 retries)│
+         │            │ No                        │
+         └────────────┼───────────────────────────┘
+                      ▼
+            ┌──────────────────┐
+            │ Conditional Edge │
+            │ (More Steps?)    │
+            └──────────────────┘
+                  │       │
+        Complete  │       │  Continue
+                  │       └─────────────────┐
+                  ▼                         │
+         ┌──────────────────┐               │
+         │  Make Decision   │               │
+         │ (Aggregate & LLM)│               │
+         └──────────────────┘               │
+                  │                         │
+                  ▼                         │
+          ┌──────────────┐     ┌───────────┴───────────┐
+          │   Finalize   │     │ Check Workflow Complete │
+          │   (Cleanup)  │     └───────────────────────┘
+          └──────────────┘                   │
+                  │                          │
+                  ▼                          │
+                [END]         (loops back to Execute Step)
 ```
 
 ### **State Management**
@@ -153,6 +163,7 @@ class AgentState(TypedDict):
     decision: Dict[str, Any]       # Final decision
     pipeline: Any                  # Model pipeline
     error: str                     # Error tracking
+    retry_count: int               # 📚 NEW: Track retry attempts for quality validation
 ```
 
 **Benefits:**
@@ -160,6 +171,7 @@ class AgentState(TypedDict):
 - Clear contract between nodes
 - Automatic state propagation
 - Easy to add new state fields
+- **NEW: Retry tracking enables quality-aware self-correction**
 
 ## 🚀 Quick Start
 
@@ -289,18 +301,64 @@ def node_name(self, state: AgentState) -> AgentState:
 
 ### **Conditional Edge Pattern**
 
-Conditional edges enable dynamic routing:
+Conditional edges enable dynamic routing with **quality validation and retry logic**:
 
 ```python
 def should_continue(self, state: AgentState) -> str:
     """
-    Decide next path based on state
+    📚 EDUCATIONAL: Conditional Edge with Quality Validation & Retry
     
-    Returns: Edge name to follow
+    This is the KEY agentic pattern - the agent evaluates its own output
+    and decides whether to:
+    1. Continue to next step
+    2. Retry the current step (if quality is low)
+    3. Complete the workflow
     """
+    results = state.get("results", [])
+    
+    # Quality validation - check if last result needs retry
+    if results:
+        last_result = results[-1]
+        if self._is_low_quality_result(last_result.result):
+            retry_count = state.get("retry_count", 0)
+            max_retries = 2
+            
+            if retry_count < max_retries:
+                # Go back one step and retry
+                state["current_step"] -= 1
+                state["retry_count"] = retry_count + 1
+                state["results"] = state["results"][:-1]  # Remove failed result
+                return "continue"  # Retry the step
+    
+    # Normal flow - check if workflow complete
     if state["current_step"] >= len(state["workflow"]):
         return "complete"
+    
+    state["retry_count"] = 0  # Reset for new step
     return "continue"
+```
+
+#### Quality Validation Helper
+
+```python
+def _is_low_quality_result(self, result: str) -> bool:
+    """
+    📚 EDUCATIONAL: Quality Validation for Agentic Retry Logic
+    
+    Low-quality indicators:
+    - Very short responses (< 10 chars)
+    - Error messages or "I cannot"/"I don't" phrases
+    - Empty or whitespace-only results
+    """
+    if not result or len(result.strip()) < 10:
+        return True
+    
+    low_quality_phrases = [
+        "i cannot", "i can't", "i don't", "unable to",
+        "sorry", "error", "unclear", "not visible"
+    ]
+    
+    return any(phrase in result.lower() for phrase in low_quality_phrases)
 ```
 
 ### **Graph Compilation**
